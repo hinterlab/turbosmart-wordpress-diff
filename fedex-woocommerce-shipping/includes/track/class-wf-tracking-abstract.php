@@ -33,7 +33,7 @@ abstract class WfTrackingAbstract {
 	}
 	
 	private function load_tracking_data( ) {
-		$this->tracking_data = WfTrackingUtil::load_tracking_data();
+		$this->tracking_data = Ph_FedEx_Tracking_Util::load_tracking_data();
 	}
 
 	private function get_tracking_message( ) {
@@ -103,17 +103,17 @@ abstract class WfTrackingAbstract {
 		$tracking_url	= trim( $tracking_url );
 		$tracking_link 	= '';
 		if( '' != $tracking_url ){
-			if( stripos($tracking_url, WfTrackingUtil::TAG_SHIPMENT_ID ) ) {
+			if( stripos($tracking_url, Ph_FedEx_Tracking_Util::TAG_SHIPMENT_ID ) ) {
 				$tracking_link 	= $tracking_url;
-				$tracking_link 	= str_replace( WfTrackingUtil::TAG_SHIPMENT_ID, $shipment_id, $tracking_link );
+				$tracking_link 	= str_replace( Ph_FedEx_Tracking_Util::TAG_SHIPMENT_ID, $shipment_id, $tracking_link );
 			}
 			else {
 				$tracking_link 	= $tracking_url.$shipment_id;
 			}
 			
-			if( stripos($tracking_link, WfTrackingUtil::TAG_SHIPPING_POST_CODE ) ) {
+			if( stripos($tracking_link, Ph_FedEx_Tracking_Util::TAG_SHIPPING_POST_CODE ) ) {
 				$shipping_postcode = preg_replace('/\s+/', '', $shipping_postcode);
-				$tracking_link 	= str_replace( WfTrackingUtil::TAG_SHIPPING_POST_CODE, $shipping_postcode, $tracking_link );
+				$tracking_link 	= str_replace( Ph_FedEx_Tracking_Util::TAG_SHIPPING_POST_CODE, $shipping_postcode, $tracking_link );
 			}
 		}
 

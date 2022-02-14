@@ -18,15 +18,16 @@ class WF_Tracking_Admin_FedEx
 		if( ! is_array($this->settings) || ! isset($this->settings['account_number']) ) {
 			$this->settings = get_option( 'woocommerce_'.WF_Fedex_ID.'_settings', null );
 		}
-		$this->display_fedex_meta_box_on_order = isset($this->settings['display_fedex_meta_box_on_order']) ? $this->settings['display_fedex_meta_box_on_order'] : 'yes';
+		$this->display_fedex_meta_box_on_order 	= isset($this->settings['display_fedex_meta_box_on_order']) ? $this->settings['display_fedex_meta_box_on_order'] : 'yes';
+		$this->disable_for_customer 			= ( isset( $this->settings['disable_customer_tracking'] ) && !empty( $this->settings['disable_customer_tracking'] ) ) ? $this->settings['disable_customer_tracking'] : 'no';
 
 		if ( ! class_exists( 'WfTrackingFactory' ) )
 			include_once ( 'track/class-wf-tracking-factory.php' );
-		if ( ! class_exists( 'WfTrackingUtil' ) )
+		if ( ! class_exists( 'Ph_FedEx_Tracking_Util' ) )
 			include_once ( 'track/class-wf-tracking-util.php' );
 
 		// Sorted tracking data.
-		$this->tracking_data	= WfTrackingUtil::load_tracking_data( true );
+		$this->tracking_data	= Ph_FedEx_Tracking_Util::load_tracking_data( true );
 	}
 
 	function __construct(){
@@ -43,11 +44,14 @@ class WF_Tracking_Admin_FedEx
 			}
 		}
 		
-
 		// Shipment Tracking - Customer Order Details Page.
-		add_action( 'woocommerce_view_order', array( $this, 'wf_display_tracking_info_for_customer' ), 6 );
-		add_action( 'woocommerce_view_order', array( $this, 'wf_display_tracking_api_info_for_customer' ), 20 );
-		add_action( 'woocommerce_email_order_meta', array( $this, 'wf_add_tracking_info_to_email'), 20 );
+		if( $this->disable_for_customer == 'no' ) {
+
+			add_action( 'woocommerce_view_order', array( $this, 'wf_display_tracking_info_for_customer' ), 6 );
+			add_action( 'woocommerce_view_order', array( $this, 'wf_display_tracking_api_info_for_customer' ), 20 );
+			add_action( 'woocommerce_email_order_meta', array( $this, 'wf_add_tracking_info_to_email'), 20 );
+		}
+
 		// To get shipment tracking details outside
 		add_action( 'ph_fedex_fetch_shipment_tracking_details', array( $this, 'wf_add_tracking_info_to_email') );
 	}
@@ -59,7 +63,7 @@ class WF_Tracking_Admin_FedEx
 		if( !empty( $shipment_result_array ) ) {
 			echo '<h3>'.__( 'Shipping Detail', 'wf-shipping-fedex' ).'</h3>';
 			$shipment_source_data 	= $this->get_shipment_source_data( $order_id );
-			$order_notice 	= WfTrackingUtil::get_shipment_display_message ( $shipment_result_array, $shipment_source_data );
+			$order_notice 	= Ph_FedEx_Tracking_Util::get_shipment_display_message ( $shipment_result_array, $shipment_source_data );
 			echo '<p>'.$order_notice.'</p></br>';
 		}
 	}
@@ -73,13 +77,13 @@ class WF_Tracking_Admin_FedEx
 			// Uncomment after it gets resolved.
 			// $this->display_notice_message( $order_notice );
 			$shipment_source_data 	= $this->get_shipment_source_data( $order_id );
-			$order_notice 	= WfTrackingUtil::get_shipment_display_message ( $shipment_result_array, $shipment_source_data );
+			$order_notice 	= Ph_FedEx_Tracking_Util::get_shipment_display_message ( $shipment_result_array, $shipment_source_data );
 			echo $order_notice;
 		}
 	}
 
 	public function wf_display_tracking_api_info_for_customer( $order_id ) {
-		$turn_off_api = get_option( WfTrackingUtil::TRACKING_SETTINGS_TAB_KEY.WfTrackingUtil::TRACKING_TURN_OFF_API_KEY );
+		$turn_off_api = get_option( Ph_FedEx_Tracking_Util::TRACKING_SETTINGS_TAB_KEY.Ph_FedEx_Tracking_Util::TRACKING_TURN_OFF_API_KEY );
 		if( 'yes' == $turn_off_api ) {
 			return;
 		}
@@ -199,16 +203,19 @@ class WF_Tracking_Admin_FedEx
 		
 		$shipment_source_data 	= $this->get_shipment_source_data( $post->ID );
 
-	?>
+		// To support Shipment Tracking Integration
+		if( !empty($shipment_source_data['shipment_id_cs']) ) {
+			do_action( 'ph_fedex_shipment_tracking_detail_ids', $shipment_source_data['shipment_id_cs'], $post->ID );
+		}
+
+		?>
 		<ul class="order_actions submitbox">
 			<li id="actions" class="wide">
 				<select name="shipping_service_fedex" id="shipping_service_fedex">
-	<?php
-				echo "<option value=''>".__( 'None', 'wf_fedEx_wooCommerce_shipping' )."</option>";
-				//foreach ( $this->tracking_data as $key => $details ) {
+					<?php
+					echo "<option value=''>".__( 'None', 'wf_fedEx_wooCommerce_shipping' )."</option>";
 					echo '<option value='.'fedex'.' '.selected($shipment_source_data['shipping_service'], 'fedex').' >'.__( 'FedEx', 'wf_fedEx_wooCommerce_shipping' ).'</option>';
-				//}
-	?>
+					?>
 				</select><br>
 				<strong><?php _e( 'Enter Tracking IDs', 'wf_fedEx_wooCommerce_shipping' ) ?></strong>
 				<img class="help_tip" style="float:none;" data-tip="<?php _e( 'Comma separated, in case of multiple shipment ids for this order.', 'wf_fedEx_wooCommerce_shipping' ); ?>" src="<?php echo WC()->plugin_url();?>/assets/images/help.png" height="16" width="16" /><br>
@@ -227,11 +234,11 @@ class WF_Tracking_Admin_FedEx
 			});
 			
 			jQuery("a.woocommerce_shipment_fedex_tracking").on("click", function() {
-			   location.href = this.href + '&wf_fedex_shipment=' + jQuery('#tracking_fedex_shipment_ids').val().replace(/ /g,'')+'&shipping_service='+ jQuery( "#shipping_service_fedex" ).val()+'&order_date='+ jQuery( "#order_date_fedex" ).val();
-			   return false;
+				location.href = this.href + '&wf_fedex_shipment=' + jQuery('#tracking_fedex_shipment_ids').val().replace(/ /g,'')+'&shipping_service='+ jQuery( "#shipping_service_fedex" ).val()+'&order_date='+ jQuery( "#order_date_fedex" ).val();
+				return false;
 			});
 		</script>
-	<?php
+		<?php
 	}
 
 	function wf_display_admin_track_shipment() {
@@ -247,18 +254,18 @@ class WF_Tracking_Admin_FedEx
 		// Setting up custom message option.
 		$fedex_settings = get_option( 'woocommerce_'.WF_Fedex_ID.'_settings', null );
 		if( !empty( $fedex_settings['custom_message'] ) ) {
-		    update_option( WfTrackingUtil::TRACKING_SETTINGS_TAB_KEY.WfTrackingUtil::TRACKING_MESSAGE_KEY, $fedex_settings['custom_message'] );
+		    update_option( Ph_FedEx_Tracking_Util::TRACKING_SETTINGS_TAB_KEY.Ph_FedEx_Tracking_Util::TRACKING_MESSAGE_KEY, $fedex_settings['custom_message'] );
 		}
 
-		$shipment_source_data	= WfTrackingUtil::prepare_shipment_source_data( $post_id, $shipment_id_cs, $shipping_service, $order_date );
+		$shipment_source_data	= Ph_FedEx_Tracking_Util::prepare_shipment_source_data( $post_id, $shipment_id_cs, $shipping_service, $order_date );
 		
 		$shipment_result 		= $this->get_shipment_info( $post_id, $shipment_source_data );
 
 		if ( null != $shipment_result && is_object( $shipment_result ) ) {
-			$shipment_result_array = WfTrackingUtil::convert_shipment_result_obj_to_array ( $shipment_result );
+			$shipment_result_array = Ph_FedEx_Tracking_Util::convert_shipment_result_obj_to_array ( $shipment_result );
 			
 			update_post_meta( $post_id, self::SHIPMENT_RESULT_KEY, $shipment_result_array );
-			$admin_notice = WfTrackingUtil::get_shipment_display_message ( $shipment_result_array, $shipment_source_data );
+			$admin_notice = Ph_FedEx_Tracking_Util::get_shipment_display_message ( $shipment_result_array, $shipment_source_data );
 		}
 		else {
 			$admin_notice = __( 'Unable to update tracking info.', 'wf_fedEx_wooCommerce_shipping' );
@@ -295,7 +302,7 @@ class WF_Tracking_Admin_FedEx
 		update_post_meta( $post_id, self::SHIPMENT_SOURCE_KEY, $shipment_source_data );
 		
 		try {
-			$shipment_result 	= WfTrackingUtil::get_shipment_result( $shipment_source_data );
+			$shipment_result 	= Ph_FedEx_Tracking_Util::get_shipment_result( $shipment_source_data );
 		}catch( Exception $e ) {
 			$wftrackingmsg = 0;
 			wp_redirect( admin_url( '/post.php?post='.$post_id.'&action=edit&'.self::TRACKING_MESSAGE_KEY.'='.$wftrackingmsg ) );

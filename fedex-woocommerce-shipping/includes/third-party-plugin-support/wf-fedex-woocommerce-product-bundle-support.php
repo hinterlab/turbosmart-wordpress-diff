@@ -2,10 +2,6 @@
 /*
  * Handle If bundle product is active
  */
-global $pagenow;
-if( strpos( $pagenow, 'plugins') !== false ) {
-	echo ' <div id="message" class="notice woocommerce-message"><p> FedEx - Please Check the working in case of <strong>Bundle Products</strong>. If you want to pull the weight and dimension of products inside the bundle Individually, you will need to mark that product inside bundle as Shipped Individually in Bundle Product Page. </p></div>';
-}
 
 if( ! function_exists('ph_fedex_handle_bundle_products') ) {
 

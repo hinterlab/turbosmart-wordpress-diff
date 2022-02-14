@@ -90,26 +90,57 @@ class wf_fedex_pickup_admin{
 				$order_ids	=	$_REQUEST['post'];
 				if ( ! class_exists( 'wf_fedex_woocommerce_shipping_admin_helper' ) )
 					include_once 'class-wf-fedex-woocommerce-shipping-admin-helper.php';
-				$helper	=	new wf_fedex_woocommerce_shipping_admin_helper();
-				$result	=	$helper->request_pickup($order_ids);
-				if(isset($result) && isset($result['data'])){
-					$order_id	=	$result['data']['OrderId'];
-					update_post_meta($order_id,$this->_pickup_confirmation_number, $result['data']['PickupConfirmationNumber']);
-					update_post_meta($order_id,$this->_pickup_location,$result['data']['Location']);
-					update_post_meta($order_id,$this->_pickup_scheduled_date,$result['data']['ScheduledDate']);
-					wf_admin_notice::add_notice('FedEx pickup requested succesfully for Order ID(s): '.implode(", ",$order_ids),'notice');
+				$helper			=	new wf_fedex_woocommerce_shipping_admin_helper();
+				$result_array	=	$helper->request_pickup($order_ids);
+
+				if( is_array($result_array) && !empty($result_array) )
+				{
+					$count = true;
+					foreach ($result_array as $order_id => $result) {
+						
+						if( !empty($result) ){
+
+							$pickup_array 		= array();
+							$location_array 	= array();
+							$date_array 		= array();
+
+							foreach ($result as $service => $pickup_data) {
+
+								if(isset($pickup_data) && isset($pickup_data['data'])){
+								
+									$pickup_array[$service] 	= $pickup_data['data']['PickupConfirmationNumber'];
+									$location_array[$service] 	= $pickup_data['data']['Location'];
+									$date_array[$service] 		= $pickup_data['data']['ScheduledDate'];
+								
+									update_post_meta($order_id,$this->_pickup_confirmation_number, $pickup_array);
+									update_post_meta($order_id,$this->_pickup_location,$location_array);
+									update_post_meta($order_id,$this->_pickup_scheduled_date,$date_array);
+
+									if ( $count ) {
+										wf_admin_notice::add_notice('FedEx Pickup Requested for Order ID(s): '.implode(", ",$order_ids),'notice');
+										$count = false;
+									}
+
+									wf_admin_notice::add_notice('FedEx Pickup Scheduled Succesfully for Order ID: '.$order_id,'notice');
+									
+								}else if(isset($pickup_data['error']) && $pickup_data['error']>0){
+									wf_admin_notice::add_notice('Order #'.$order_id.' - Pickup Request Error: '.$pickup_data['message'],'error');
+								}
+							}
+						}
+					}
+				}else{
+					wf_admin_notice::add_notice('Pickup Request Error');
 				}
-				else if(isset($result['error']) && $result['error']>0){
-					wf_admin_notice::add_notice('Order #'.$order_id.' - Pickup request error: '.$result['message'],'error');
-				}
+				
 			}
 		}else if($action == 'fedex_pickup_cancel'){//Cancel Pickup
-			$order_ids	=	$_REQUEST['post']?$_REQUEST['post']:array();
+			$order_ids	=	isset( $_REQUEST['post'] ) ?$_REQUEST['post']:array();
 			foreach($order_ids as $order_id){
 				$result	=	$this->pickup_cancel($order_id);
 				if(isset($result) && isset($result['error']) && $result['error']==0){
 					$this->delete_pickup_details($order_id);
-					wf_admin_notice::add_notice('FedEx pickup cancelled for Order #'.$order_id.'.','notice');
+					wf_admin_notice::add_notice('FedEx Pickup Cancelled for Order #'.$order_id.'.','notice');
 				}
 				else{
 					wf_admin_notice::add_notice('Order #'.$order_id.': '.$result['message'],'error');
@@ -121,8 +152,28 @@ class wf_fedex_pickup_admin{
 	public function get_pickup_no($order_id){
 		if(empty($order_id))
 			return false;
+
+		$pickup_confirmation_number 		= '';
+		$pickup_confirmation_number_array	= get_post_meta($order_id,$this->_pickup_confirmation_number, 1);
+		$pickup_location_array				= get_post_meta($order_id,$this->_pickup_location, 1);
+
+		if( is_array($pickup_confirmation_number_array) && !empty($pickup_confirmation_number_array) )
+		{
+			foreach ($pickup_confirmation_number_array as $service => $pickup_number) {
+
+				if( empty($pickup_location_array[$service]) ){
+					$pickup_confirmation_number 	.= $pickup_number.', ';	
+				}else{
+					$pickup_confirmation_number 	.= $pickup_location_array[$service].'-'.$pickup_number.', ';	
+				}
+			}
+
+			if( !empty($pickup_confirmation_number) )
+			{
+				$pickup_confirmation_number = rtrim( $pickup_confirmation_number, ', ');
+			}
+		}
 		
-		$pickup_confirmation_number	=	get_post_meta($order_id,$this->_pickup_confirmation_number,1);				
 		return $pickup_confirmation_number;				
 	}
 	public function get_pickup_details($order_id){
@@ -160,11 +211,17 @@ class wf_fedex_pickup_admin{
 	}
 	
 	function display_order_list_pickup_status($column, $order_id){
-		switch ( $column ) {
-			case 'shipping_address':
-				if($this->is_pickup_requested($order_id))
-					printf('<small class="meta">'.__('FedEx Pickup No.'.$this->get_pickup_no($order_id),'wf-shipping-fedex').'</small>');
+
+		if( $this->is_pickup_requested($order_id) )
+		{
+			switch ( $column ) {
+				case 'shipping_address':
+					printf('<small class="meta">'.__('FedEx Pickup Number(s): '.$this->get_pickup_no($order_id),'wf-shipping-fedex').'</small>');
 				break;
+				case 'fedex_pickup_info':
+					printf('<small class="meta">'.__('Pickup Number(s): '.$this->get_pickup_no($order_id),'wf-shipping-fedex').'</small>');
+				break;
+			}
 		}
 	}
 	

@@ -1,4 +1,4 @@
-<tr valign="top" id="packing_options" class="fedex_packaging_tab">
+<tr valign="top" id="fedex_packing_options" class="fedex_packaging_tab">
 	<td class="titledesc" colspan="2" style="padding-left:0px">
 	<strong><?php _e( 'Box Sizes', 'wf_fedEx_wooCommerce_shipping' ); ?></strong><br><br>
 		<style type="text/css">
@@ -62,20 +62,29 @@
 			<tbody id="rates">
 				<?php
 					if ( $this->default_boxes ) {
+
+						$this->boxes = $this->get_option( 'boxes', array( ));
+						
 						foreach ( $this->default_boxes as $key => $box ) {
+
+							if ( $this->boxes && isset($this->boxes[ $box['id'] ]) && isset($this->boxes[$box['id']]['id']) && in_array($this->boxes[$box['id']]['id'], $this->standard_boxes) )
+							{
+								continue;
+							}
+
 							?>
 							<tr>
 								<td class="check-column"></td>
-                                                                <td><input type="text" size="18" readonly value="<?php echo esc_attr( $box['name'] ); ?>" /></td>
-								<td><input type="text" size="1" readonly value="<?php echo esc_attr( $box['length'] ); ?>" /><?php echo $this->dimension_unit;?></td>
-								<td><input type="text" size="1" readonly value="<?php echo esc_attr( $box['width'] ); ?>" /><?php echo $this->dimension_unit;?></td>
-								<td><input type="text" size="1" readonly value="<?php echo esc_attr( $box['height'] ); ?>" /><?php echo $this->dimension_unit;?></td>
-								<td><input type="text" size="1" readonly value="<?php echo esc_attr( $box['inner_length'] ); ?>" /><?php echo $this->dimension_unit;?></td>
-								<td><input type="text" size="1" readonly value="<?php echo esc_attr( $box['inner_width'] ); ?>" /><?php echo $this->dimension_unit;?></td>
-								<td><input type="text" size="1" readonly value="<?php echo esc_attr( $box['inner_height'] ); ?>" /><?php echo $this->dimension_unit;?></td>
-								<td><input type="text" size="1" readonly value="<?php echo esc_attr( $box['box_weight'] ); ?>" /><?php echo $this->weight_unit;?></td>
-								<td><input type="text" size="1" readonly value="<?php echo esc_attr( $box['max_weight'] ); ?>" /><?php echo $this->weight_unit;?></td>
-								<td><input type="checkbox" name="boxes_enabled[<?php echo $box['id']; ?>]" <?php checked( ! isset( $this->boxes[ $box['id'] ]['enabled'] ) || $this->boxes[ $box['id'] ]['enabled'] == 1, true ); ?> /></td>
+                                <td><input type="text" size="18" readonly name="boxes_name[<?php echo $box['id']; ?>]" value="<?php echo esc_attr( $box['name'] ); ?>" /></td>
+								<td><input type="text" size="7" name="boxes_length[<?php echo $box['id']; ?>]" value="<?php echo esc_attr( $box['length'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_width[<?php echo $box['id']; ?>]" value="<?php echo esc_attr( $box['width'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_height[<?php echo $box['id']; ?>]" value="<?php echo esc_attr( $box['height'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_inner_length[<?php echo $box['id']; ?>]" value="<?php echo esc_attr( $box['inner_length'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_inner_width[<?php echo $box['id']; ?>]" value="<?php echo esc_attr( $box['inner_width'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_inner_height[<?php echo $box['id']; ?>]" value="<?php echo esc_attr( $box['inner_height'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_box_weight[<?php echo $box['id']; ?>]" value="<?php echo esc_attr( $box['box_weight'] ); ?>" /><?php echo $this->weight_unit;?></td>
+								<td><input type="text" size="7" name="boxes_max_weight[<?php echo $box['id']; ?>]" value="<?php echo esc_attr( $box['max_weight'] ); ?>" /><?php echo $this->weight_unit;?></td>
+								<td><input type="checkbox" name="boxes_enabled[<?php echo $box['id']; ?>]" <?php checked( $box['enabled'], true ); ?> /></td>
 							</tr>
 							<?php
 						}
@@ -85,9 +94,18 @@
 							$this->boxes = $this->merge_with_speciality_box($this->boxes);
 						}
 
+						$standard_boxes = false;
+
 						foreach ( $this->boxes as $key => $box ) {
-							if ( ! is_numeric( $key ) )
+
+							if ( !is_numeric( $key ) && ( !in_array($key, $this->standard_boxes) || !isset($box['box_type']) ) ) {
 								continue;
+							}
+
+							if ( !is_numeric( $key ) && in_array($key, $this->standard_boxes) ) {
+								$standard_boxes = true;
+							}
+
 							if( !$this->enable_speciality_box ){
 								if( strpos( $box['box_type'], 'speciality_boxes') !== false ){
 									continue;
@@ -96,24 +114,37 @@
 							?>
 
 							<tr>
-								<td class="check-column">
-									<input type="checkbox" />
-									<input type="hidden" name="box_type[]" value="<?php echo !empty($box['box_type']) ? $box['box_type'] : 'defaul_box';?>">
-								</td>
-                                                                <td><input type="text" size="18" name="boxes_name[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['name'] ); ?>"/></td>
-								<td><input type="text" size="1" name="boxes_length[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['length'] ); ?>" /><?php echo $this->dimension_unit;?></td>
-								<td><input type="text" size="1" name="boxes_width[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['width'] ); ?>" /><?php echo $this->dimension_unit;?></td>
-								<td><input type="text" size="1" name="boxes_height[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['height'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+
+								<?php if( $standard_boxes ) { ?>
+
+									<td class="check-column"></td>
+									<td><input type="text" size="18" readonly name="boxes_name[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['name'] ); ?>"/></td>
+
+								<?php } else { ?>
+
+									<td class="check-column">
+										<input type="checkbox" />
+										<input type="hidden" name="box_type[]" value="<?php echo !empty($box['box_type']) ? $box['box_type'] : 'defaul_box';?>">
+									</td>
+									<td><input type="text" size="18" name="boxes_name[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['name'] ); ?>"/></td>
+
+								<?php } ?>
+
+								<td><input type="text" size="7" name="boxes_length[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['length'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_width[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['width'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_height[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['height'] ); ?>" /><?php echo $this->dimension_unit;?></td>
 								
-								<td><input type="text" size="1" name="boxes_inner_length[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['inner_length'] ); ?>" /><?php echo $this->dimension_unit;?></td>
-								<td><input type="text" size="1" name="boxes_inner_width[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['inner_width'] ); ?>" /><?php echo $this->dimension_unit;?></td>
-								<td><input type="text" size="1" name="boxes_inner_height[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['inner_height'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_inner_length[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['inner_length'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_inner_width[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['inner_width'] ); ?>" /><?php echo $this->dimension_unit;?></td>
+								<td><input type="text" size="7" name="boxes_inner_height[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['inner_height'] ); ?>" /><?php echo $this->dimension_unit;?></td>
 		
-								<td><input type="text" size="1" name="boxes_box_weight[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['box_weight'] ); ?>" /><?php echo $this->weight_unit;?></td>
-								<td><input type="text" size="1" name="boxes_max_weight[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['max_weight'] ); ?>" /><?php echo $this->weight_unit;?></td>
+								<td><input type="text" size="7" name="boxes_box_weight[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['box_weight'] ); ?>" /><?php echo $this->weight_unit;?></td>
+								<td><input type="text" size="7" name="boxes_max_weight[<?php echo $key; ?>]" value="<?php echo esc_attr( $box['max_weight'] ); ?>" /><?php echo $this->weight_unit;?></td>
 								<td><input type="checkbox" name="boxes_enabled[<?php echo $key; ?>]" <?php if( isset($box['enabled']) ) checked( $box['enabled'], true ); ?> /></td>
 							</tr>
 							<?php
+
+							$standard_boxes = false; 
 						}
 					}
 				?>
@@ -126,9 +157,9 @@
 				jQuery('#woocommerce_fedex_packing_method').change(function(){
 
 					if ( jQuery(this).val() == 'box_packing' )
-						jQuery('#packing_options').show();
+						jQuery('#fedex_packing_options').show();
 					else
-						jQuery('#packing_options').hide();
+						jQuery('#fedex_packing_options').hide();
 
 				}).change();
 
@@ -155,14 +186,14 @@
 					var code = '<tr class="new">\
 							<td><input type="checkbox" /></td>\
 							<td><input type="text" size="18" name="boxes_name[' + size +']" /></td>\
-							<td><input type="text" size="1" name="boxes_length[' + size + ']" />in</td>\
-							<td><input type="text" size="1" name="boxes_width[' + size + ']" />in</td>\
-							<td><input type="text" size="1" name="boxes_height[' + size + ']" />in</td>\
-							<td><input type="text" size="1" name="boxes_inner_length[' + size + ']" />in</td>\
-							<td><input type="text" size="1" name="boxes_inner_width[' + size + ']" />in</td>\
-							<td><input type="text" size="1" name="boxes_inner_height[' + size + ']" />in</td>\
-							<td><input type="text" size="1" name="boxes_box_weight[' + size + ']" />lbs</td>\
-							<td><input type="text" size="1" name="boxes_max_weight[' + size + ']" />lbs</td>\
+							<td><input type="text" size="7" name="boxes_length[' + size + ']" /><?php echo $this->dimension_unit;?></td>\
+							<td><input type="text" size="7" name="boxes_width[' + size + ']" /><?php echo $this->dimension_unit;?></td>\
+							<td><input type="text" size="7" name="boxes_height[' + size + ']" /><?php echo $this->dimension_unit;?></td>\
+							<td><input type="text" size="7" name="boxes_inner_length[' + size + ']" /><?php echo $this->dimension_unit;?></td>\
+							<td><input type="text" size="7" name="boxes_inner_width[' + size + ']" /><?php echo $this->dimension_unit;?></td>\
+							<td><input type="text" size="7" name="boxes_inner_height[' + size + ']" /><?php echo $this->dimension_unit;?></td>\
+							<td><input type="text" size="7" name="boxes_box_weight[' + size + ']" /><?php echo $this->weight_unit;?></td>\
+							<td><input type="text" size="7" name="boxes_max_weight[' + size + ']" /><?php echo $this->weight_unit;?></td>\
 							<td><input type="checkbox" name="boxes_enabled[' + size + ']" /></td>\
 						</tr>';
 

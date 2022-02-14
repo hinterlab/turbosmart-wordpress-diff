@@ -14,7 +14,8 @@ return array(
 		'height'     => 1.5,
 		'inner_length'	=>	12.375,
 		'inner_width'	=>	10.875,
-		'inner_height'	=>	1.5
+		'inner_height'	=>	1.5,
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; Small Box',
@@ -26,7 +27,8 @@ return array(
 		'height'     => 2.625,
 		'inner_length'	=>	11.25,
 		'inner_width'	=>	8.75,
-		'inner_height'	=>	2.625
+		'inner_height'	=>	2.625,
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; Medium Box',
@@ -38,7 +40,8 @@ return array(
 		'height'     => 2.375,
 		'inner_length'	=>	13.25,
 		'inner_width'	=>	11.5,
-		'inner_height'	=>	2.375
+		'inner_height'	=>	2.375,
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; Medium Box',
@@ -50,7 +53,8 @@ return array(
 		'height'     => 4.375,
 		'inner_length'	=>	11.25,
 		'inner_width'	=>	8.75,
-		'inner_height'	=>	4.375
+		'inner_height'	=>	4.375,
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; Large Box',
@@ -62,7 +66,8 @@ return array(
 		'height'     => 3,
 		'inner_length'	=>	17.5,
 		'inner_width'	=>	12.365,
-		'inner_height'	=>	3
+		'inner_height'	=>	3,
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; Large Box',
@@ -74,7 +79,8 @@ return array(
 		'height'     => 7.75,
 		'inner_length'	=>	11.25,
 		'inner_width'	=>	8.75,
-		'inner_height'	=>	7.75
+		'inner_height'	=>	7.75,
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; Extra Large Box',
@@ -86,7 +92,8 @@ return array(
 		'height'     => 10.75,
 		'inner_length'	=>	11.875,
 		'inner_width'	=>	11,
-		'inner_height'	=>	10.75
+		'inner_height'	=>	10.75,
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; Extra Large Box',
@@ -98,12 +105,13 @@ return array(
 		'height'     => 6,
 		'inner_length'	=>	15.75,
 		'inner_width'	=>	14.125,
-		'inner_height'	=>	6
+		'inner_height'	=>	6,
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; Pak',
 		'id'         => 'FEDEX_PAK',
-		'max_weight' => 50,
+		'max_weight' => 5.5,
 		'box_weight' => 0,
 		'length'     => 15.5,
 		'width'      => 12,
@@ -111,7 +119,8 @@ return array(
 		'inner_length'	=>	15.5,
 		'inner_width'	=>	12,
 		'inner_height'	=>	1.5,
-		'type'       => 'packet'
+		'type'       => 'packet',
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; Envelope',
@@ -124,7 +133,8 @@ return array(
 		'inner_length'	=>	12.5,
 		'inner_width'	=>	9.5,
 		'inner_height'	=>	.25,
-		'type'       => 'envelope'
+		'type'       => 'envelope',
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; 10kg Box',
@@ -136,7 +146,8 @@ return array(
 		'height'     => 10.19,
 		'inner_length'	=>	15.81,
 		'inner_width'	=>	12.94,
-		'inner_height'	=>	10.19
+		'inner_height'	=>	10.19,
+		'enabled'	=> true,
 	),
 	array(
 		'name'       => 'FedEx&#174; 25kg Box',
@@ -148,6 +159,33 @@ return array(
 		'height'     => 13.19,
 		'inner_length'	=>	21.56,
 		'inner_width'	=>	16.56,
-		'inner_height'	=>	13.19
+		'inner_height'	=>	13.19,
+		'enabled'	=> true,
+	),
+	array(
+		'name'       => 'FedEx&#174; A4 Box',
+		'id'         => 'FEDEX_BOX',
+		'max_weight' => 19.842,
+		'box_weight' => 0,
+		'length'     => 18.189,
+		'width'      => 13.74016,
+		'height'     => 2.99213,
+		'inner_length'	=>	18.189,
+		'inner_width'	=>	13.74016,
+		'inner_height'	=>	2.99213,
+		'enabled'	=> false,
+	),
+	array(
+		'name'       => 'FedEx&#174; Tube',
+		'id'         => 'FEDEX_TUBE',
+		'max_weight' => 19.842,
+		'box_weight' => 0,
+		'length'     => 37.99213,
+		'width'      => 5.984252,
+		'height'     => 5.984252,
+		'inner_length'	=>	37.99213,
+		'inner_width'	=>	5.984252,
+		'inner_height'	=>	5.984252,
+		'enabled'	=> false,
 	)
 );

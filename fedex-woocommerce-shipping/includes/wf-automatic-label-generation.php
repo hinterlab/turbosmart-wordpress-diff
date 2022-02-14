@@ -3,7 +3,25 @@
 
 	if(isset($shipping_setting['automate_package_generation']) && $shipping_setting['automate_package_generation']=='yes' )
 	{
-		add_action( 'woocommerce_thankyou', 'wf_automatic_package_and_label_generation_fedex' );
+		if( isset($shipping_setting['auto_label_trigger']) && $shipping_setting['auto_label_trigger'] == 'payment_status' ){
+
+			add_action( 'woocommerce_order_payment_status_changed', 'wf_automatic_package_and_label_generation_fedex' );
+		}
+		else{
+
+			add_action( 'woocommerce_thankyou', 'wf_automatic_package_and_label_generation_fedex' );
+			add_action( 'woocommerce_order_status_changed', 'ph_automatic_label_generation_for_failed_label_generation', 10, 3 );
+		}
+	}
+
+	function ph_automatic_label_generation_for_failed_label_generation( $order_id, $old_status, $new_status )
+	{
+		$auto_label_generation = get_post_meta( $order_id, 'ph_fedex_auto_label_generation', true );
+		
+		if( $auto_label_generation == 'failed' && $new_status == 'processing' ){
+
+			wf_automatic_package_and_label_generation_fedex( $order_id );
+		}
 	}
 	
 	function wf_automatic_package_and_label_generation_fedex( $order_id )
@@ -11,13 +29,23 @@
 		$order 					= new WC_Order($order_id);
 		$order_status 			= $order->get_status();
 		$shipping_setting_fedex = get_option('woocommerce_wf_fedex_woocommerce_shipping_settings');
-		$allowed_order_status 	= apply_filters( 'xa_automatic_label_generation_allowed_order_status', array('processing'), $order_status, $order_id );	// Allowed order status for automatic label generation
+		$allowed_order_status 	= apply_filters( 'xa_automatic_label_generation_allowed_order_status', array('processing'), $order_status, $order_id );	// Allowed order status for automatic label 
+
+		// Add transient to check for duplicate label generation
+		$transient			 	= 'fedex_auto_generate' . md5( $order_id );
+		$processed_order		= get_transient( $transient );
+
+		// If requested order is already processed, return.
+		if( $processed_order ) {
+			return;
+		}
 		
 		// Stop automatic package generation when order status is changed and order status not found in allowed order status
 		if( ! in_array($order_status, $allowed_order_status) ) {
 			if( $shipping_setting_fedex['debug'] == 'yes' ) {
 				WC_Admin_Meta_Boxes::add_error( __( "Since Order Status is ", 'wf-shipping-fedex' ).$order_status.__( ". Automatic label generation has been suspended (Fedex).", 'wf-shipping-fedex' ) );
 			}
+			update_post_meta( $order_id, 'ph_fedex_auto_label_generation', 'failed' );
 			return;
 		}
 		
@@ -29,20 +57,30 @@
 		
 		//  Automatically Generate Packages
 		$current_minute=(integer)date('i');
-		$package_url=admin_url( '/post.php?wf_fedex_generate_packages='.base64_encode($order_id).'&auto_generate='.md5($current_minute) );
-		$ch = curl_init();
-		curl_setopt($ch,CURLOPT_URL,$package_url);
-		curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
-		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
-		$output=curl_exec($ch);
-		if( ! $output && curl_errno($ch) ) {
-			WC_Admin_Meta_Boxes::add_error( __( 'Fedex - Curl error while automatic package generation. Error number - ', 'wf-shipping-fedex' ). curl_errno($ch) );
-		}
-		curl_close($ch);
+
+		// Set transient for 2 min to avoid duplicate label generation
+		set_transient( $transient, $order_id, 120 );
+
+		$fedex_admin_class 	= new wf_fedex_woocommerce_shipping_admin();
+
+		$fedex_admin_class->ph_fedex_auto_generate_packages( base64_encode($order_id), $shipping_setting_fedex,md5($current_minute) );
+
+		update_post_meta( $order_id, 'ph_fedex_auto_label_generation', '' );
+		
+		// $package_url=admin_url( '/post.php?wf_fedex_generate_packages='.base64_encode($order_id).'&auto_generate='.md5($current_minute) );
+		// $ch = curl_init();
+		// curl_setopt($ch,CURLOPT_URL,$package_url);
+		// curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
+		// curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
+		// $output=curl_exec($ch);
+		// if( ! $output && curl_errno($ch) ) {
+		// 	WC_Admin_Meta_Boxes::add_error( __( 'Fedex - Curl error while automatic package generation. Error number - ', 'wf-shipping-fedex' ). curl_errno($ch) );
+		// }
+		// curl_close($ch);
 	}
 	
-	function wf_get_shipping_service($order,$retrive_from_order = false, $shipment_id=false){
-		
+	function wf_get_shipping_service($order,$retrive_from_order = false, $shipment_id=false, $package_group_key=false)
+	{
 		if($retrive_from_order == true){
 			$service_code = get_post_meta($order->id, 'wf_woo_fedex_service_code'.$shipment_id, true);
 			if(!empty($service_code)) return $service_code;
@@ -61,7 +99,7 @@
 			$shipping_method_meta 	= $shipping_method->get_meta('_xa_fedex_method');
 			$shipping_method_id 	= ! empty($shipping_method_meta) ? $shipping_method_meta['id'] : $shipping_method['method_id'];
 			if( strstr( $shipping_method_id, WF_Fedex_ID ) ) {
-				return str_replace( WF_Fedex_ID.':', '', $shipping_method_id );
+				return apply_filters( 'ph_modify_shipping_method_service', str_replace( WF_Fedex_ID.':', '', $shipping_method_id ) , $order, $package_group_key );
 			}
 		}
 
@@ -89,11 +127,13 @@
 			WC_Admin_Meta_Boxes::add_error('Fedex Automatic label generation Failed. Please check product weight and Dimension.');
 		}
 		else {
-			/// Automatically Generate Labels
-			$current_minute=(integer)date('i');
-			$package_url=admin_url( '/post.php?wf_fedex_createshipment='.$order_id.'&auto_generate='.md5($current_minute) );
+			// Automatically Generate Labels
 
-			$service_code=wf_get_shipping_service( new WC_Order($order_id) );
+			$shipping_setting_fedex 	= get_option('woocommerce_wf_fedex_woocommerce_shipping_settings');
+			$current_minute 			= (integer)date('i');
+
+			// $package_url=admin_url( '/post.php?wf_fedex_createshipment='.$order_id.'&auto_generate='.md5($current_minute) );
+
 			$weight=array();
 			$length=array();
 			$width=array();
@@ -110,23 +150,34 @@
 						$width[]=$package['Dimensions']['Width'];
 						$height[]=$package['Dimensions']['Height'];
 					}
-					$services[] = ! empty($package['service']) ? $package['service'] : $service_code;		// $package['service'] is set by Multivendor addon
+					
+					$service 	= wf_get_shipping_service( new WC_Order($order_id),false, false, $key );
+					$service 	= apply_filters( 'ph_fedex_label_shipping_method', $service, new WC_Order($order_id) );
+
+					// $package['service'] is set by Multivendor addon
+					$services[] = ! empty($package['service']) ? $package['service'] : $service;
 				}
 			}
-			$package_url.='&weight=["'.implode('","',$weight).'"]';
-			$package_url.='&length=["'.implode('","',$length).'"]';
-			$package_url.='&width=["'.implode('","',$width).'"]';
-			$package_url.='&height=["'.implode('","',$height).'"]';
-			$package_url.='&service=["'.implode('","',$services).'"]';
-			$ch = curl_init();
-			curl_setopt($ch,CURLOPT_URL,$package_url);
-			curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
-			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
-			@$output=curl_exec($ch);
-			if( ! $output && curl_errno($ch) ) {
-				WC_Admin_Meta_Boxes::add_error( __( 'Fedex - Curl error while automatic label generation. Error number - ', 'wf-shipping-fedex' ). curl_errno($ch) );
-			}
-			curl_close($ch);
+			
+			$fedex_admin_class 	= new wf_fedex_woocommerce_shipping_admin();
+
+			$fedex_admin_class->ph_fedex_auto_create_shipment( $order_id, $shipping_setting_fedex, $weight, $length, $width, $height, $services,md5($current_minute) );
+
+			// $package_url.='&weight=["'.implode('","',$weight).'"]';
+			// $package_url.='&length=["'.implode('","',$length).'"]';
+			// $package_url.='&width=["'.implode('","',$width).'"]';
+			// $package_url.='&height=["'.implode('","',$height).'"]';
+			// $package_url.='&service=["'.implode('","',$services).'"]';
+			
+			// $ch = curl_init();
+			// curl_setopt($ch,CURLOPT_URL,$package_url);
+			// curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
+			// curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
+			// @$output=curl_exec($ch);
+			// if( ! $output && curl_errno($ch) ) {
+			// 	WC_Admin_Meta_Boxes::add_error( __( 'Fedex - Curl error while automatic label generation. Error number - ', 'wf-shipping-fedex' ). curl_errno($ch) );
+			// }
+			// curl_close($ch);
 		}
 	}
 
@@ -134,13 +185,18 @@
 	// $shipping_setting['auto_email_label']=='yes' is for older version compatibility can be removed after some time, 4.1.0.6
 	if( isset($shipping_setting['auto_email_label']) && ( $shipping_setting['auto_email_label']=='yes' || is_array($shipping_setting['auto_email_label']) ) )
 	{
-		add_action('xa_fedex_label_generated_successfully','wf_after_label_generation_fedex',3,3);
+		add_action('xa_fedex_label_generated_successfully','wf_after_label_generation_fedex',3,4);
 	}
 
 
-	function wf_after_label_generation_fedex($shipment_id,$encoded_label_image,$order_id)
+	function wf_after_label_generation_fedex($shipment_id,$encoded_label_image,$order_id,$shippinglabel_type)
 	{	
+
 		$shipping_setting2 =get_option('woocommerce_wf_fedex_woocommerce_shipping_settings');
+
+		$subject = ( isset($shipping_setting2['email_subject']) && !empty($shipping_setting2['email_subject']) ) ? $shipping_setting2['email_subject'] : __('Shipment Label For Your Order', 'wf-shipping-fedex').' [ORDER NO]';
+		$subject = str_replace( '[ORDER NO]', $order_id, $subject );
+
 		if( isset($shipping_setting2['email_content']) && !empty($shipping_setting2['email_content']) ){
 			$emailcontent=$shipping_setting2['email_content'];
 		}else{
@@ -181,16 +237,20 @@
 			);
 			$product_info_as_table = null;
 			$table_style = "style='border: 1px solid #dddddd;text-align: left;padding: 8px;'";
-			foreach( $stored_packages as $stored_package ) {
-				foreach( $stored_package as $package ) {
-					foreach( $package['packed_products'] as $product ) {
-						$all_products['ids'] = ! empty($all_products['ids']) ? $all_products['ids'].', '. $product->get_id() : $product->get_id();
-						$all_products['skus'] = ! empty($all_products['skus']) ? $all_products['skus'].', '. $product->get_sku() : $product->get_sku();
-						$all_products['names'] = ! empty($all_products['names']) ? $all_products['names'].', '. $product->get_name() : $product->get_name();
-						$product_info_as_table .= "<tr>
-														<td $table_style>".$product->get_id()."</td>
-														<td $table_style>".$product->get_sku()."</td>
-														<td $table_style>".$product->get_name()."</td>";
+
+			if( !empty($stored_packages) && is_array($stored_packages) )
+			{
+				foreach( $stored_packages as $stored_package ) {
+					foreach( $stored_package as $package ) {
+						foreach( $package['packed_products'] as $product ) {
+							$all_products['ids'] = ! empty($all_products['ids']) ? $all_products['ids'].', '. $product->get_id() : $product->get_id();
+							$all_products['skus'] = ! empty($all_products['skus']) ? $all_products['skus'].', '. $product->get_sku() : $product->get_sku();
+							$all_products['names'] = ! empty($all_products['names']) ? $all_products['names'].', '. $product->get_name() : $product->get_name();
+							$product_info_as_table .= "<tr>
+							<td $table_style>".$product->get_id()."</td>
+							<td $table_style>".$product->get_sku()."</td>
+							<td $table_style>".$product->get_name()."</td>";
+						}
 					}
 				}
 			}
@@ -203,16 +263,52 @@
 											".$product_info_as_table;
 			}
 
-			$emailcontent = str_replace( array( "[PRODUCTS ID]", "[PRODUCTS NAME]", "[PRODUCTS SKU]", "[ORDER NO]", "[ORDER AMOUNT]","[PRODUCT_INFO]"),
-									array( $all_products['ids'], $all_products['names'], $all_products['skus'], $order->get_order_number(), $order->get_total(), $product_info_as_table ), $emailcontent );
+			$customer_email	= "";
+			$first_name 	= "";
+			$last_name 		= "";
+
+			if( is_object($order) )
+			{
+				$customer_email = $order->get_billing_email();
+				$first_name 	= $order->get_billing_first_name();
+				$last_name		= $order->get_billing_last_name();
+			}
 			
-			$subject 		= 'Shipment Label For Your Order';
+			$customer_name 	= $first_name.' '.$last_name;
+
+			$emailcontent = str_replace( array( "[PRODUCTS ID]", "[PRODUCTS NAME]", "[PRODUCTS SKU]", "[ORDER NO]", "[ORDER AMOUNT]","[PRODUCT_INFO]","[CUSTOMER EMAIL]", "[CUSTOMER NAME]"),
+									array( $all_products['ids'], $all_products['names'], $all_products['skus'], $order->get_order_number(), $order->get_total(), $product_info_as_table, $customer_email, $customer_name ), $emailcontent );
+			
+			$additional_labels 	= get_post_meta($order_id, 'wf_fedex_additional_label_'.$shipment_id, true);
+			$add_label 			= '';
+
+			if(!empty($additional_labels) && is_array($additional_labels)) {
+				foreach($additional_labels as $additional_key => $additional_label) {					
+
+					$add_label_url = admin_url('/post.php?wf_fedex_additional_label='.base64_encode($shipment_id.'|'.$order_id.'|'.$additional_key));
+
+					$add_label 	.= "<a href='".$add_label_url."' ><button>Additional Label</button></a>";
+				}		
+			}
+
+			if( !empty($add_label) ) {
+
+				$emailcontent = str_replace("[ADDITIONAL LABELS]",$add_label, $emailcontent);
+			}
+												
 			$img_url		= admin_url('/post.php?wf_fedex_viewlabel='.base64_encode($shipment_id.'|'.$order_id));
 			$body 			= str_replace("[DOWNLOAD LINK]",$img_url, $emailcontent);
 
-			$headers = array('Content-Type: text/html; charset=UTF-8');
+			// Attaching Label with Mail
+			$label 			= base64_decode(chunk_split($encoded_label_image));
+			$file_name 		= WP_CONTENT_DIR."/uploads/fedex_label_$shipment_id.".strtolower($shippinglabel_type);
+			
+			file_put_contents( $file_name, $label);		// Save the label to wp-content/uploads
+			$attachments[] 	= $file_name;	// Attach the label to mail
+
+			$headers 		= array('Content-Type: text/html; charset=UTF-8');
 			foreach($to_emails as $to){
-				wp_mail( $to, $subject, $body, $headers );
+				wp_mail( $to, $subject, $body, $headers, $attachments );
 			}
 		}
 	}

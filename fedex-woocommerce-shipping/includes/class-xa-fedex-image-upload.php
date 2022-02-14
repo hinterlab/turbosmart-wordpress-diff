@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class xa_fedex_image_upload {
 	public function __construct() {
-		$this->upload_document_wsdl_version = 11;
+		$this->upload_document_wsdl_version = 19;
 
 		$this->xa_init();
 		add_action( 'wp_ajax_xa_fedex_upload_image', array($this,'xa_upload_image'), 10, 1 );
@@ -68,11 +68,11 @@ class xa_fedex_image_upload {
 	private function xa_init(){
 		$this->settings = get_option( 'woocommerce_'.WF_Fedex_ID.'_settings', null );
 		
-		$this->production				= ( $bool = $this->settings[ 'production' ] ) && $bool == 'yes' ? true : false;
-		$this->api_key					= $this->settings[ 'api_key' ];
-		$this->api_pass					= $this->settings[ 'api_pass' ];
-		$this->account_number			= $this->settings[ 'account_number' ];
-		$this->meter_number				= $this->settings[ 'meter_number' ];
+		$this->production				= ( isset($this->settings[ 'production' ]) && ( $bool = $this->settings[ 'production' ] ) && $bool == 'yes' ) ? true : false;
+		$this->api_key					= isset($this->settings[ 'api_key' ]) ? $this->settings[ 'api_key' ] : '';
+		$this->api_pass					= isset($this->settings[ 'api_pass' ]) ? $this->settings[ 'api_pass' ] : '';
+		$this->account_number			= isset($this->settings[ 'account_number' ]) ? $this->settings[ 'account_number' ] : '';
+		$this->meter_number				= isset($this->settings[ 'meter_number' ]) ? $this->settings[ 'meter_number' ] : '';
 
 		$this->soap_method = $this->is_soap_available() ? 'soap' : 'nusoap';
 		if( $this->soap_method == 'nusoap' && !class_exists('nusoap_client') ){
@@ -123,7 +123,7 @@ class xa_fedex_image_upload {
 		$request['TransactionDetail'] = array('CustomerTransactionId' => '*** Upload Documents Request using PHP ***');
 		$request['Version'] = array(
 			'ServiceId' => 'cdus', 
-			'Major' => '11', 
+			'Major' => '19', 
 			'Intermediate' => '0', 
 			'Minor' => '0'
 		);

@@ -12,6 +12,7 @@ if(!class_exists('Ph_Fedex_WeightPacketUtil')){
 						$boxes[$box_key]['weight']				=	$boxes[$box_key]['weight']+$item_weight;
 						$boxes[$box_key]['items'][]				=	$item['data'];
 						$fitted=true;
+						break;
 					}
 				}
 				if(!$fitted){

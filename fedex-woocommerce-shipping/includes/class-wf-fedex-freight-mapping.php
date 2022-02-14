@@ -45,7 +45,15 @@ class WF_Fedex_Freight_Mapping {
 	 * @param mixed $taxonomy Taxonomy of the term being edited
 	 */
 	public function edit_form( $term, $taxonomy ) {
-		$fedex_freight_class = get_woocommerce_term_meta( $term->term_id, 'fedex_freight_class', true );
+
+		global $wp_version;
+
+		if( version_compare( $wp_version, '4.4', '<=' ) ){
+			$fedex_freight_class = get_woocommerce_term_meta( $term->term_id, 'fedex_freight_class', true );
+		}else{
+			$fedex_freight_class = get_term_meta( $term->term_id, 'fedex_freight_class', true );
+		}
+
 		?>
 		<tr class="form-field">
 			<th scope="row" valign="top"><label for="fedex_freight_class"><?php _e( 'Fedex Freight Class', 'wf-shipping-fedex' ); ?></label></th>
@@ -94,8 +102,17 @@ class WF_Fedex_Freight_Mapping {
 	 * @return array
 	 */
 	public function column( $columns, $column, $id ) {
+
+		global $wp_version;
+
 		if ( $column == 'fedex_freight_class' ) {
-			$fedex_freight_class = get_woocommerce_term_meta( $id, 'fedex_freight_class', true );
+			
+			if( version_compare( $wp_version, '4.4', '<=' ) ){
+				$fedex_freight_class = get_woocommerce_term_meta( $id, 'fedex_freight_class', true );
+			}else{
+				$fedex_freight_class = get_term_meta( $id, 'fedex_freight_class', true );
+			}
+			
 			$columns             .= $fedex_freight_class ? $this->classes[ $fedex_freight_class ] : '-';
 		}
 

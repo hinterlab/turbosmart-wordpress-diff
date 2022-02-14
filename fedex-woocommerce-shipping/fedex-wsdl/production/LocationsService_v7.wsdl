@@ -1018,7 +1018,7 @@
   </binding>
   <service name="LocationsService">
     <port name="LocationsServicePort" binding="ns:LocationsServiceSoapBinding">
-      <s1:address location="https://wsbeta.fedex.com:443/web-services/locs"/>
+      <s1:address location="https://ws.fedex.com/web-services/locs"/>
     </port>
   </service>
 </definitions>

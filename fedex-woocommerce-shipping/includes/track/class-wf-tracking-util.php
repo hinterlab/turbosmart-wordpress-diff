@@ -1,6 +1,6 @@
 <?php
 
-class WfTrackingUtil {
+class Ph_FedEx_Tracking_Util {
 	const TRACKING_SETTINGS_TAB_KEY 		= "wf_tracking";
 	const TRACKING_DATA_KEY 			= "_tracking_data";
 	const TRACKING_MESSAGE_KEY 			= "_custom_message";

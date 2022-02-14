@@ -12,9 +12,9 @@ class wfFedexRequest{
 	public function __construct( $settings = null ) {
 		$this->settings = $settings;
 		$this->id                               = WF_Fedex_ID;
-		$this->rateservice_version              = 16;
-		$this->ship_service_version              = 15;
-		$this->addressvalidationservice_version = 2;
+		$this->rateservice_version              = 31;
+		$this->ship_service_version             = 28;
+		$this->addressvalidationservice_version = 4;
 		$this->init();		
 	}
 	
@@ -71,7 +71,7 @@ class wfFedexRequest{
 		endif;
 
 		$this->origin_country  	= apply_filters( 'woocommerce_fedex_origin_country_code', $origin_country );
-		$this->origin_state 	= !empty($origin_state) ? $origin_state : $this->settings[ 'freight_shipper_state' ];
+		$this->origin_state 	= !empty($origin_state) ? $origin_state : ( isset($this->settings[ 'freight_shipper_state' ]) ? $this->settings[ 'freight_shipper_state' ] : '' );
 	}
 
 	public function set_package($package){

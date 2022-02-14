@@ -14,8 +14,8 @@ class xa_my_account_order_return
 		}
 	}
 	private function init(){
-		$this->settings = get_option( 'woocommerce_'.WF_Fedex_ID.'_settings', null );
-		$this->debug        = ( $bool = $this->settings[ 'debug' ] ) && $bool == 'yes' ? true : false;
+		$this->settings 	= get_option( 'woocommerce_'.WF_Fedex_ID.'_settings', null );
+		$this->debug        = ( isset($this->settings[ 'debug' ]) && ( $bool = $this->settings[ 'debug' ] ) && $bool == 'yes' ) ? true : false;
 
 		//This option is removed since 3.2.3 (Released 09-Nov-17 ), Kept here for backward compatibility
 		$this->retun_label_dom_service 	= isset( $this->settings['retun_label_dom_service'] ) ? $this->settings['retun_label_dom_service'] : '';
@@ -45,7 +45,7 @@ class xa_my_account_order_return
 				$return_shipment_id = get_post_meta($this->order_id, 'wf_woo_fedex_returnShipmetId', true);
 				if(!empty($shipping_return_label)){
 					$download_url = admin_url('/post.php?wf_fedex_viewReturnlabel='.base64_encode($shipmentId.'|'.$this->order_id) );
-					echo '<li style="padding:10px"><strong>Return Shipment #:</strong> '.$return_shipment_id;?>
+					echo '<li style="padding:10px"><strong>Return Shipment Tracking ID:</strong> '.$return_shipment_id;?>
 					<a class="button tips" href="<?php echo $download_url; ?>" data-tip="<?php _e('Print Return Label', 'wf-shipping-fedex'); ?>"><?php _e('Print Return Label', 'wf-shipping-fedex'); ?></a>
 					</li>
 					<?php 

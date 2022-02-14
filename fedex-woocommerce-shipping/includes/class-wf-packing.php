@@ -3,7 +3,7 @@
 /**
  * WooCommerce Box Packer
  */
-class WF_Boxpack {
+class PH_FedEx_Boxpack {
 
 	private $boxes;
 	private $items;
@@ -47,7 +47,7 @@ class WF_Boxpack {
 	 * @return void
 	 */
 	public function add_item( $length, $width, $height, $weight, $value = '', $meta = array() ) {
-		$this->items[] = new WF_Boxpack_Item( $length, $width, $height, $weight, $value, $meta );
+		$this->items[] = new PH_FedEx_Boxpack_Item( $length, $width, $height, $weight, $value, $meta );
 	}
 
 	/**
@@ -61,7 +61,7 @@ class WF_Boxpack {
 	 * @return void
 	 */
 	public function add_box( $length, $width, $height, $weight = 0, $packtype = '' ) {
-		$new_box = new WF_Boxpack_Box( $length, $width, $height, $packtype, $weight );
+		$new_box = new PH_FedEx_Boxpack_Box( $length, $width, $height, $packtype, $weight );
 		$this->boxes[] = $new_box;
 		return $new_box;
 	}
@@ -254,9 +254,9 @@ class WF_Boxpack {
 }
 
 /**
- * WF_Boxpack_Box class.
+ * PH_FedEx_Boxpack_Box class.
  */
-class WF_Boxpack_Box {
+class PH_FedEx_Boxpack_Box {
 
 	/** @var string ID of the box - given to packages */
 	private $id = '';
@@ -516,7 +516,7 @@ class WF_Boxpack_Box {
 		if($mode=='new_algorithm')
 		{	
 			$box_volume =$this->packed_length * $this->packed_width * $this->packed_height ;
-			$package->percent =(( $packed_volume / $box_volume ) * 100  * sizeof($packed) )- $box_volume ;
+			$package->percent =(( $packed_volume / $box_volume ) * 100  * sizeof($packed) );
 		}
 		else
 		{
@@ -638,9 +638,9 @@ class WF_Boxpack_Box {
 }
 
 /**
- * WF_Boxpack_Item class.
+ * PH_FedEx_Boxpack_Item class.
  */
-class WF_Boxpack_Item {
+class PH_FedEx_Boxpack_Item {
 
 	public $weight;
 	public $height;

@@ -1,13 +1,13 @@
 <?php
 /*
-	Plugin Name: FedEx WooCommerce Shipping with Print Label
+	Plugin Name: WooCommerce FedEx Shipping Plugin with Print Label
 	Plugin URI: https://www.pluginhive.com/product/woocommerce-fedex-shipping-plugin-with-print-label/
-	Description: Obtain real time shipping rates and Print shipping labels via FedEx Shipping API.
-	Version: 4.1.7
+	Description: This plugin helps you completely automate FedEx shipping. It displays live shipping rates on WooCommerce cart page, helps you pay postage & print labels from within WooCommerce, and track your shipments.
+	Version: 4.9.7
 	Author: PluginHive
 	Author URI: http://pluginhive.com/about/
-	WC requires at least: 2.6.0
-	WC tested up to: 3.5
+	WC requires at least: 3.0.0
+	WC tested up to: 6.0.0
 	Text Domain : wf-shipping-fedex
 */
 
@@ -17,6 +17,23 @@ if (!defined('WF_Fedex_ID')){
 
 if( !defined('WF_FEDEX_ADV_DEBUG_MODE') ){
 	define("WF_FEDEX_ADV_DEBUG_MODE", "on"); // Turn 'off' to disable advanced debug mode.
+}
+
+// Define PH_FEDEX_PLUGIN_VERSION
+if ( !defined( 'PH_FEDEX_PLUGIN_VERSION' ) )
+{
+	define( 'PH_FEDEX_PLUGIN_VERSION', '4.9.7' );
+}
+
+// Include API Manager
+if ( !class_exists( 'PH_FedEx_API_Manager' ) ) {
+
+	include_once( 'ph-api-manager/ph_api_manager_fedex.php' );
+}
+
+if ( class_exists( 'PH_FedEx_API_Manager' ) ) {
+
+	$ph_fedex_api_obj 	= new PH_FedEx_API_Manager( __FILE__, '', PH_FEDEX_PLUGIN_VERSION, 'plugin', 'https://www.pluginhive.com/', 'FedEx' );
 }
 
 /**
@@ -40,14 +57,11 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Shipping_Common') ) {
 	require_once 'class-ph-fedex-woocommerce-shipping-common.php';
 }
 
-// Setting active plugins as global variable for further usage
-global $xa_active_plugins;
-$xa_active_plugins=get_option( 'active_plugins');
-
 /**
  * Check if WooCommerce is active
  */
-if (in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', $xa_active_plugins ) )) {	
+$xa_active_plugins = Ph_Fedex_Woocommerce_Shipping_Common::get_active_plugins();
+if ( in_array( 'woocommerce/woocommerce.php', $xa_active_plugins ) ) {
 	
 	if (!function_exists('wf_get_settings_url')){
 		function wf_get_settings_url(){
@@ -81,7 +95,7 @@ if (in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', $x
 			
 			public function __construct() {
 
-				$this->active_plugins = $GLOBALS['xa_active_plugins'];		// List of active plugins
+				$this->active_plugins = Ph_Fedex_Woocommerce_Shipping_Common::get_active_plugins();		// List of active plugins
 				$fedex_settings = get_option( 'woocommerce_'.WF_Fedex_ID.'_settings', array() );
 				// Define Fedex Settings
 				global $xa_fedex_settings;
@@ -119,6 +133,11 @@ if (in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', $x
 				}			
 			}
 			public function init() {
+
+				if( ! class_exists('PH_FedEx_Help_and_Support') ) {
+					include_once('includes/class-ph-fedex-help-and-support.php');
+				}
+
 				if ( ! class_exists( 'wf_order' ) ) {
 			  		include_once 'includes/class-wf-legacy.php';
 			  	}
@@ -152,14 +171,13 @@ if (in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', $x
 				include_once ( 'includes/class-wf-fedex-woocommerce-shipping-admin.php' );
 				include_once ( 'includes/class-wf-admin-options.php' );
 				include_once ( 'includes/class-wf-tracking-admin.php' );
-				include_once ( 'includes/wf-multi-address-shipping.php' );
 				include_once ( 'includes/class-wf-request.php' );
 				include_once ( 'includes/class-xa-my-account-order-return.php' );
 				if ( is_admin() ) {
 					include_once ( 'includes/class-wf-fedex-pickup-admin.php' );				
-					//include api manager
-					include_once ( 'includes/wf_api_manager/wf-api-manager-config.php' );
+					
 					include_once ( 'includes/class-xa-fedex-image-upload.php' );
+					include_once ( 'includes/class-ph-fedex-shipment-tracking.php' );
 
 				}
 				// Localisation
@@ -189,13 +207,33 @@ if (in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', $x
 				if( in_array( 'yith-multiple-shipping-addresses-for-woocommerce/init.php', $this->active_plugins) ) {
 					require_once 'includes/third-party-plugin-support/ph-fedex-yith-multiple-shipping-addresses-for-woocommerce.php';
 				}
+				// For woocommerce currency switcher
+				if( in_array( 'woocommerce-multicurrency/woocommerce-multicurrency.php', $this->active_plugins) ) {
+					require_once 'includes/third-party-plugin-support/ph-fedex-woocommerce-currency-switcher.php';
+				}
+				// For WooCommerce Ship to Multiple Addresses
+				if( in_array( 'woocommerce-shipping-multiple-addresses/woocommerce-shipping-multiple-address.php', $this->active_plugins) || in_array( 'woocommerce-shipping-multiple-addresses/woocommerce-shipping-multiple-addresses.php', $this->active_plugins) ) {
+					require_once 'includes/third-party-plugin-support/ph-fedex-woocommerce-shipping-multiple-address.php';
+				}
+				//	WOOCS - WooCommerce Currency Switcher Plugin support
+				if( in_array( 'woocommerce-currency-switcher/index.php', $this->active_plugins) ) {
+					require_once 'includes/third-party-plugin-support/ph-fedex-woocs-currency-switcher.php';
+				}
+				// For Woocommerce Composite Product plugin
+				if( in_array( 'woocommerce-composite-products/woocommerce-composite-products.php', $this->active_plugins) ) {
+					require_once 'includes/third-party-plugin-support/ph-fedex-woocommerce-composite-product-support.php';
+				}
 			}
 			
 			public function wf_fedex_scripts() {
+
+				if( is_admin() && ! did_action('wp_enqueue_media') && isset($_GET['section']) &&  $_GET['section'] == 'wf_fedex_woocommerce_shipping'){
+					wp_enqueue_media();
+				}
+
 				wp_enqueue_script( 'jquery-ui-sortable' );
-				wp_enqueue_script( 'wf-common-script', plugins_url( '/resources/js/wf_common.js', __FILE__ ), array( 'jquery' ) );
 				wp_enqueue_script( 'wf-fedex-script', plugins_url( '/resources/js/wf_fedex.js', __FILE__ ), array( 'jquery' ) );
-				wp_enqueue_style( 'wf-common-style', plugins_url( '/resources/css/wf_common_style.css', __FILE__ ));
+				wp_enqueue_style( 'ph-fedex-common-style', plugins_url( '/resources/css/wf_common_style.css', __FILE__ ));
 				wp_enqueue_style( 'wf-fedex-style', plugins_url( '/resources/css/wf_fedex_style.css', __FILE__ ));
 			}
 			

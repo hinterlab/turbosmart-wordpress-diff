@@ -19,7 +19,8 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
             "FEDEX_HOME_DELIVERY_STATION",
             "FEDEX_OFFICE",
             "FEDEX_SHIPSITE",
-            "FEDEX_SMART_POST_HUB"
+            "FEDEX_SMART_POST_HUB",
+            "FEDEX_ONSITE"
         );
         private function is_soap_available(){
             if( extension_loaded( 'soap' ) ){
@@ -36,6 +37,7 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
             $this->api_pass         = $this->fedex_settings['api_pass'];
             $this->account_number   = $this->fedex_settings['account_number'];
             $this->meter_number     = $this->fedex_settings['meter_number'];
+            $this->production       = isset($this->fedex_settings['production']) && !empty($this->fedex_settings['production']) && $this->fedex_settings['production'] == 'yes' ? true: false;
             $this->debug            = $this->fedex_settings['debug'];
             $this->request_hash='';
 
@@ -95,6 +97,9 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
          * Get Fedex Location Search Request.
          */
         public function get_request( $package = array() ){
+            
+            $hold_at_location_carrier_code = isset($this->fedex_settings['hold_at_location_carrier_code'])  && !empty($this->fedex_settings['hold_at_location_carrier_code']) ? $this->fedex_settings['hold_at_location_carrier_code']: '';
+
             $request['WebAuthenticationDetail'] = array(
                 'UserCredential' => array(
                     'Key'       => $this->api_key,
@@ -107,22 +112,35 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
             );
             $request['Version']                 = array(
                 'ServiceId'     => 'locs',
-                'Major'         => '7',
+                'Major'         => '12',
                 'Intermediate'  => '0',
                 'Minor'         => '0'
             );
             $request['LocationsSearchCriterion'] = 'ADDRESS';
             $request['Address']                 = array(
-                'PostalCode'            => $_POST['postcode'],
-                'City'                  => $_POST['city'],
-                'StateOrProvinceCode'   => $_POST['state'],
-                'CountryCode'           => $_POST['country'],
+                'PostalCode'            => $_POST['s_postcode'],
+                'City'                  => $_POST['s_city'],
+                'StateOrProvinceCode'   => $_POST['s_state'],
+                'CountryCode'           => $_POST['s_country'],
             );
             $request['MultipleMatchesAction']   = 'RETURN_ALL';
             $request['SortDetail']              = array(
                 'Criterion'     => 'DISTANCE',
                 'Order'         => 'LOWEST_TO_HIGHEST',
             );
+            $request['Constraints'] =[];
+            $request['Constraints'] = array(
+             'RadiusDistance' => array(
+                 'Value'      => '10',
+                 'Units'      => 'MI',
+             ),
+             'RequiredLocationCapabilities' => array(
+                 'TransferOfPossessionType' => 'HOLD_AT_LOCATION',
+             )
+            );
+            if(!empty($hold_at_location_carrier_code)){
+             $request['Constraints']['RequiredLocationCapabilities']['CarrierCode'] = $hold_at_location_carrier_code;
+            }
             return $request;
         }
 
@@ -133,12 +151,13 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
          */
         public function get_result( $request ){
             $this->request_hash=md5(json_encode($request));
-            if(!empty(get_transient($this->request_hash)) )
+            $transient_data = get_transient($this->request_hash);
+            if( !empty($transient_data) )
             {
                 return json_decode(get_transient( $this->request_hash ));
             }
-            $this->location_service_version = '7';          // Search Location WSDL version
-            $client = $this->ph_create_soap_client( plugin_dir_path( dirname( __FILE__ ) ) . 'fedex-wsdl/production/LocationsService_v'.$this->location_service_version.'.wsdl' );
+            $this->location_service_version = '12';          // Search Location WSDL version
+            $client = $this->ph_create_soap_client( plugin_dir_path( dirname( __FILE__ ) ) . 'fedex-wsdl/'. ( $this->production ? 'production' : 'test' ) .'/LocationsService_v'.$this->location_service_version.'.wsdl' );
             $result = null;
             if( $this->soap_method == 'nusoap' ){
                 $result = $client->call( 'searchLocations', array( 'SearchLocationsRequest' => $request ) );
@@ -166,7 +185,7 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
             catch( Exception $e ){
                 $this->debug( __('Something Went Wrong while Fetching Search Loactions Request & Response', 'wf-shipping-fedex') );
             }
-            set_transient($this->request_hash,json_encode($result),2*24*60*60);  // store result in transient using request hash, it will expiry within two days.
+            set_transient($this->request_hash,json_encode($result),HOUR_IN_SECONDS);  // store result in transient using request hash, it will expiry within one hour.
             return $result;
         }
 
@@ -200,6 +219,9 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
                     }
                     self::$fedex_locations = $all_locations;
                     WC()->session->set('ph_fedex_hold_at_locations', $all_locations);
+                }else{
+                    self::$fedex_locations = array();
+                    WC()->session->set('ph_fedex_hold_at_locations', array());
                 }
             }
         }
@@ -209,33 +231,54 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
          */
         public function ph_fedex_add_hold_at_location_to_checkout_fields( $fields ) {
             
-            $fields['billing']['ph_fedex_hold_at_locations'] = array(
-                'label'       => __('FedEx Hold at Location', 'wf-shipping-fedex'),
-                'placeholder' => _x('', 'placeholder', 'wf-shipping-fedex'),
-                'required'    => false,
-                'clear'       => false,
-                'type'        => 'select',
-                'class'       => array ('address-field', 'update_totals_on_change' ),
-                'options'     => array(
-                    '' => __('Select FedEx Hold at Location', 'wf-shipping-fedex' )
-                    )
-            );
+            $cart = array();
+
+            if( WC() != null && WC()->cart != null) {
+
+                $cart = WC()->cart->cart_contents;
+            }
+
+            if( !empty($cart) && is_array($cart)  ) {
+
+                foreach( $cart as $cart_item) {
+
+                    $product = $cart_item['data'];
+
+                    if( !$product->is_virtual() ) {
+                        
+                        $fields['billing']['ph_fedex_hold_at_locations'] = array(
+                            'label'       => __('FedEx Hold at Location', 'wf-shipping-fedex'),
+                            'placeholder' => _x('', 'placeholder', 'wf-shipping-fedex'),
+                            'required'    => false,
+                            'clear'       => false,
+                            'type'        => 'select',
+                            'class'       => array ('address-field', 'update_totals_on_change' ),
+                            'options'     => array(
+                                '' => __('Select FedEx Hold at Location', 'wf-shipping-fedex' )
+                            )
+                        );
+                        break;
+                    }
+                }
+            }
 
             return apply_filters('ph_fedex_checkout_fields', $fields, $this->fedex_settings);
         }
         
         public function ph_fedex_update_fedex_hold_at_location_select_options( $array ){
             $this->fedex_on_hold_locations();
-            self::$fedex_locations=WC()->session->get('ph_fedex_hold_at_locations');
+
+            self::$fedex_locations              =   WC()->session->get('ph_fedex_hold_at_locations');
+            $hold_at_location_types             =   apply_filters('ph_fedex_supported_hold_at_location_types', self::$supported_hold_at_location_type);
+
             parse_str($_POST['post_data'], $data );
+            $selected_location_id = isset($data['ph_fedex_hold_at_locations']) ? $data['ph_fedex_hold_at_locations'] : null;
+            $locator     = '<select id="ph_fedex_hold_at_locations" name="ph_fedex_hold_at_locations" class="select" data-select2="1">';
+            $locator    .=  "<option value=''>". __('Select FedEx Hold at Location', 'wf-shipping-fedex') ."</option>";
             if( ! empty(self::$fedex_locations) ) {
-                $selected_location_id = isset($data['ph_fedex_hold_at_locations']) ? $data['ph_fedex_hold_at_locations'] : null;
-                $locator     = '<select id="ph_fedex_hold_at_locations" name="ph_fedex_hold_at_locations" class="select">';
-                $locator    .=  "<option value=''>". __('Select FedEx Hold at Location', 'wf-shipping-fedex') ."</option>";
-                
                 foreach( self::$fedex_locations as $location_id => $location ) {
 
-                    if( ! empty($location->LocationDetail->LocationType) && in_array($location->LocationDetail->LocationType, self::$supported_hold_at_location_type) ) {
+                    if( ! empty($location->LocationDetail->LocationType) && in_array($location->LocationDetail->LocationType, $hold_at_location_types) ) {
                     
                         $address = null;
                         // Street Address
@@ -268,9 +311,10 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
                         }
                     }
                 }
-                $locator .= "</select>";
-                $array['#ph_fedex_hold_at_locations'] = $locator;
             }
+            
+            $locator .= "</select>";
+            $array['#ph_fedex_hold_at_locations'] = $locator;
             return $array;
         }
 
@@ -278,34 +322,59 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
          * Update FedEx Hold at Location information in rate request.
          */
         public function ph_fedex_update_hold_at_location_data_in_rate_request( $request , $parcels) {
-            if(isset($_POST['post_data']))
+
+            $selected_fedex_hold_at_location   = '';
+
+            // Checkout Page $_POST['post_data'] will be available
+            if( isset($_POST['post_data']) )
             {
                 parse_str($_POST['post_data'], $data );
                 $selected_fedex_hold_at_location = isset($data['ph_fedex_hold_at_locations'])?$data['ph_fedex_hold_at_locations']:'';
-                if( ! empty($selected_fedex_hold_at_location) && !empty($selected_fedex_hold_at_location=$this->get_fedex_hold_at_location_details($selected_fedex_hold_at_location)) ) {
-                    $contact=array('CompanyName'=>isset($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->CompanyName)?$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->CompanyName:'',
-                                'PhoneNumber'=>isset($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->PhoneNumber)?$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->PhoneNumber:'',
-                                'FaxNumber'=>isset($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->FaxNumber)?$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->FaxNumber:'',
-                                'EMailAddress'=>isset($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->EMailAddress)?$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->EMailAddress:'',
-                                );
-
-
-                    $address=array('StreetLines'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->StreetLines,
-                                'City'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->City,
-                                'StateOrProvinceCode'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->StateOrProvinceCode,
-                                'PostalCode'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->PostalCode,
-                                'CountryCode'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->CountryCode,
-                                'Residential'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->Residential,
-                                'GeographicCoordinates'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->GeographicCoordinates
-                                );
-                    $request['RequestedShipment']['SpecialServicesRequested']['SpecialServiceTypes'][] = 'HOLD_AT_LOCATION';
-                    $request['RequestedShipment']['SpecialServicesRequested']['HoldAtLocationDetail'] = array(
-                        'LocationType'              => $selected_fedex_hold_at_location->LocationDetail->LocationType,
-                        'LocationId'                => $selected_fedex_hold_at_location->LocationDetail->LocationId,
-                        'LocationContactAndAddress' => array('Contact' =>$contact,'Address'=>$address)
-                    );
+            }
+            // After proceeding from Checkout Page $_POST['post_data'] will not be available
+            else if( isset( $_POST['ph_fedex_hold_at_locations'] ) )
+            {
+                $selected_fedex_hold_at_location = $_POST['ph_fedex_hold_at_locations'];
+            }
+            else // 133908 - Order Edit Page - Rate Request
+            {
+                $order_id = isset($_REQUEST['oid']) ? $_REQUEST['oid'] : '';
+                $order = !empty($order_id) ? wc_get_order($order_id) : '';
+                if(!empty($order) && is_object($order))
+                {
+                    $selected_fedex_hold_at_location = $order->get_meta( 'ph_fedex_hold_at_location', true );
                 }
             }
+
+            if( is_object($selected_fedex_hold_at_location) || (! empty($selected_fedex_hold_at_location) && !empty($selected_fedex_hold_at_location=$this->get_fedex_hold_at_location_details($selected_fedex_hold_at_location))) ) {
+                $contact=array('CompanyName'=>isset($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->CompanyName)?$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->CompanyName:'',
+                    'PhoneNumber'=>isset($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->PhoneNumber)?$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->PhoneNumber:'',
+                    'FaxNumber'=>isset($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->FaxNumber)?$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->FaxNumber:'',
+                    'EMailAddress'=>isset($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->EMailAddress)?$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->EMailAddress:'',
+                );
+
+
+                $address=array('StreetLines'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->StreetLines,
+                    'City'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->City,
+                    'StateOrProvinceCode'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->StateOrProvinceCode,
+                    'PostalCode'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->PostalCode,
+                    'CountryCode'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->CountryCode,
+                    'Residential'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->Residential,
+                    'GeographicCoordinates'=>$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->GeographicCoordinates
+                );
+                
+                if( !isset($request['RequestedShipment']['SpecialServicesRequested']['SpecialServiceTypes']) ) {
+                    $request['RequestedShipment']['SpecialServicesRequested']['SpecialServiceTypes'] = [];
+                }
+                
+                $request['RequestedShipment']['SpecialServicesRequested']['SpecialServiceTypes'][] = 'HOLD_AT_LOCATION';
+                $request['RequestedShipment']['SpecialServicesRequested']['HoldAtLocationDetail'] = array(
+                    'LocationType'              => $selected_fedex_hold_at_location->LocationDetail->LocationType,
+                    'LocationId'                => $selected_fedex_hold_at_location->LocationDetail->LocationId,
+                    'LocationContactAndAddress' => array('Contact' =>$contact,'Address'=>$address)
+                );
+            }
+
             return $request;
         }
         /*
@@ -336,7 +405,7 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
          * Add debug data.
          */
         public function debug( $message, $type = 'notice' ) {
-            if ( ! is_admin() && $this->debug && function_exists('wc_add_notice') ) {
+            if ( ! is_admin() && $this->debug == 'yes' && function_exists('wc_add_notice') ) {
                 wc_add_notice( $message, $type );
             }
         }
@@ -345,10 +414,53 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
          * Update selected Hold at Location in Order meta.
          */
         public function ph_fedex_update_hold_at_location_in_order_meta( $order_id ,$data) {
+            
             $selected_fedex_hold_at_location = isset($data['ph_fedex_hold_at_locations'])?$data['ph_fedex_hold_at_locations']:'';
+
             if( ! empty($selected_fedex_hold_at_location) ) {
+
                 $selected_fedex_hold_at_location=$this->get_fedex_hold_at_location_details($selected_fedex_hold_at_location);
+
+                $address = null;
+
+                // Street Address
+                if( ! empty($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->StreetLines) ) {
+                    $address = $selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->StreetLines;
+                }
+
+                // City
+                if( ! empty($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->City) ) {
+                    $address = ! empty($address) ? $address.', '. $selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->City : $selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->City;
+                }
+
+                // State
+                if( ! empty($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->StateOrProvinceCode) ) {
+                    $address = ! empty($address) ? $address.', '. $selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->StateOrProvinceCode : $selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->StateOrProvinceCode;
+                }
+
+                // Postal Code
+                if( ! empty($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->PostalCode) ) {
+                    $address = ! empty($address) ? $address.', '. $selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->PostalCode : $selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->PostalCode;
+                }
+
+                // Country
+                $address = !empty($address) ? $address.', '.$selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->CountryCode : $selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Address->CountryCode;
+
+                $selectedAddress    = $address;
+                
+                //Distance
+                if( ! empty($selected_fedex_hold_at_location->Distance->Value) ) {
+                    $address = $address.'. ('. $selected_fedex_hold_at_location->Distance->Value.' '. $selected_fedex_hold_at_location->Distance->Units.')';
+                }
+
                 update_post_meta( $order_id, 'ph_fedex_hold_at_location', $selected_fedex_hold_at_location );
+
+                if( isset($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact) && isset($selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->CompanyName) ) {
+
+                    $selectedAddress    = $selected_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->CompanyName.', '.$selectedAddress;
+                }
+
+                update_post_meta( $order_id, 'ph_fedex_selected_hold_at_location', $selectedAddress );
             }
         }
        
@@ -414,7 +526,7 @@ if( ! class_exists('Ph_Fedex_Woocommerce_Location_Finder') ) {
         public function ph_fedex_update_hold_at_location_data_in_shipment_request( $request,$order ) {
             if( !empty($order->get_meta( 'ph_fedex_hold_at_location', true ) ) ) {
                     $ph_fedex_hold_at_location=$order->get_meta( 'ph_fedex_hold_at_location', true );
-                    $contact='';
+                    $contact=array();
                     isset($ph_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->CompanyName)?$contact['CompanyName']=$ph_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->CompanyName:'';
                     isset($ph_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->PhoneNumber)?$contact['PhoneNumber']=$ph_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->PhoneNumber:'';
                     isset($ph_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->FaxNumber)?$contact['FaxNumber']=$ph_fedex_hold_at_location->LocationDetail->LocationContactAndAddress->Contact->FaxNumber:'';
